@@ -1,10 +1,9 @@
 # CyberPatriot Scoreboard
 Track the scores of teams during CyberPatriot competitions in a clean, organized, and condensed format 
 
-| <img src="https://raw.githubusercontent.com/okdargy/cpat-scores/master/.github/readme/demo.png" alt="Demo of cpat-scores" width="800px" /> |
-|------------|
-| Screenshot |
-
+| ![demo.png](https://raw.githubusercontent.com/okdargy/cpat-scores/master/.github/readme/demo.png) | 
+|:--:| 
+| *Demo* |
 
 ## Getting Started
 First, clone the repo with Git:
