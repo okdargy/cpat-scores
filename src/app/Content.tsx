@@ -25,6 +25,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Payload } from "recharts/types/component/DefaultTooltipContent";
 import { Checkbox } from "@/components/ui/checkbox";
+import Link from "next/link";
 
 interface TeamStats {
     teamNum: string;
@@ -223,7 +224,6 @@ export default function Content({ defaultTeams, colorHash }: {
         return getTeamGraphs.mutate(teams.map((team) => team.teamNum));
     }
 
-
     useEffect(() => {
         if(!colorHash) {
             const hash = Math.floor(Math.random() * 360);
@@ -326,7 +326,12 @@ export default function Content({ defaultTeams, colorHash }: {
                             Add some teams by clicking on the &quot;Edit Teams&quot; button or the pencil icon in the bottom right to get started
                         </h2>
                     </div>
-                    <Button onClick={() => setOpenEdit(true)} variant={"outline"}>Edit Teams</Button>
+                    <div className="flex gap-x-2 justify-center">
+                        <Button onClick={() => setOpenEdit(true)} variant={"outline"}>Edit Teams</Button>
+                        <Link href="https://github.com/okdargy/cpat-scores">
+                            <Button variant={"outline"}>Star on GitHub</Button>
+                        </Link>
+                    </div>
                 </div>
             )}
             <div className={"absolute bottom-3 right-3 space-x-2 transition-opacity " + (buttonsHidden ? "opacity-0 hover:opacity-100" : "opacity-50 hover:opacity-100")}>
