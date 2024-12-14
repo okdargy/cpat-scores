@@ -27,6 +27,7 @@ type Data = {
 
 type OrganizedData = { [key: string]: { time: string, value: number }[] };
 
+// This is scuffed as hell... WARNING: might lose braincells!
 function initializeColsRestore(cols: { label: string }[]): { [key: string]: number } {
     return cols
         .filter(col => col.label !== "Time")
@@ -87,12 +88,21 @@ function populateOrganizedData(numTeams: number, rows: { c: { v: string | number
 
 function processData(data: Data, numTeams: number, teams: string[]): OrganizedData {
     const { cols, rows } = data;
-    const colsRestore = initializeColsRestore(cols);
-    const organizedData = initializeOrganizedData(cols, teams);
-    
-    console.log(colsRestore, organizedData);
-    populateOrganizedData(numTeams, rows, cols, colsRestore, organizedData, teams);
-    return organizedData;
+
+    if (numTeams > 1 && !cols[1].label.includes('-')) {
+        return teams.reduce((acc, team) => {
+            acc[team] = [];
+            return acc;
+        }, {} as OrganizedData);
+    } else {
+        const colsRestore = initializeColsRestore(cols);
+        const organizedData = initializeOrganizedData(cols, teams);
+        
+        console.log(colsRestore, organizedData);
+        populateOrganizedData(numTeams, rows, cols, colsRestore, organizedData, teams);
+
+        return organizedData;
+    }
 }
 
 export type AppRouter = typeof appRouter;

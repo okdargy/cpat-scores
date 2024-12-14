@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Eye, EyeClosed, LoaderCircle, Minus, Pencil, Plus, RefreshCcw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { setCookie } from "cookies-next";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { trpc } from "./_trpc/client";
 import { ScoreResponse } from "./_types/api";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, TooltipProps, XAxis, YAxis } from "recharts";
@@ -24,7 +24,6 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Payload } from "recharts/types/component/DefaultTooltipContent";
-import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 
 interface TeamStats {
@@ -224,8 +223,10 @@ export default function Content({ defaultTeams, colorHash }: {
         return getTeamGraphs.mutate(teams.map((team) => team.teamNum));
     }
 
+    const intervalId = useRef<NodeJS.Timeout | null>(null);
+
     useEffect(() => {
-        if(!colorHash) {
+        if (!colorHash) {
             const hash = Math.floor(Math.random() * 360);
             setColorHash(hash);
             setCookie("colorHash", hash.toString());
@@ -235,10 +236,21 @@ export default function Content({ defaultTeams, colorHash }: {
         getGraphScores();
 
         console.log('loaded with', teams.length, 'teams and', historicalStats.length, 'data points as well as', teamStats.length, 'team stats at', new Date().toLocaleTimeString());
-        setInterval(() => {
+
+        if (intervalId.current) {
+            clearInterval(intervalId.current);
+        }
+
+        intervalId.current = setInterval(() => {
             getTeamScores();
             getGraphScores();
-        }, 1000 * 60 * 5); // 5 minutes
+        }, 1000 * 60); // 5 minutes
+
+        return () => {
+            if (intervalId.current) {
+                clearInterval(intervalId.current);
+            }
+        };
     }, [teams])
 
     return (
@@ -251,19 +263,43 @@ export default function Content({ defaultTeams, colorHash }: {
                 >
                     <ResizablePanel defaultValue={25} maxSize={50} minSize={25}>
                         <div className="flex flex-col gap-y-2 h-full divide-y">
-                            {teamStats.map((teamStat) => (
-                                <div key={teamStat.teamNum} className="flex flex-col justify-center h-full my-auto px-5">
-                                    <div className="flex justify-between items-center gap-x-2">
-                                        <div>
-                                            <h3 className="text-lg font-semibold text-neutral-200">{teams.find((team) => team.teamNum === teamStat.teamNum)?.teamName || "-"}</h3>
-                                            <h1 className="text-5xl font-semibold text-neutral-100">{teamStat.teamNum}</h1>
-                                            <h2>{teamStat.score} <span className="text-neutral-500">- from {teamStat.state} ({teamStat.division})</span></h2>
+                            {teamStats.map((teamStat) => {
+                                const teamName =
+                                    teams.find((team) => team.teamNum === teamStat.teamNum)?.teamName || "-";
+
+                                return (
+                                    <div
+                                        key={teamStat.teamNum}
+                                        className="flex flex-col justify-center h-full my-auto px-5"
+                                    >
+                                        <div className="flex justify-between items-center">
+                                            <div className="min-w-0 flex flex-col gap-y-1">
+                                                <h3
+                                                    className="text-lg font-semibold text-neutral-200 truncate"
+                                                    title={teamName}
+                                                >
+                                                    {teamName}
+                                                </h3>
+                                                <h1 className="text-5xl font-semibold text-neutral-100 truncate">
+                                                    {teamStat.teamNum}
+                                                </h1>
+                                                <h2>
+                                                    {teamStat.score}{" "}
+                                                    <span className="text-neutral-500 truncate">
+                                                        - from {teamStat.state} ({teamStat.division})
+                                                    </span>
+                                                </h2>
+                                            </div>
+                                            <div
+                                                className="w-5 h-5 rounded-full flex-shrink-0"
+                                                style={{ backgroundColor: stringToColor(teamStat.teamNum) }}
+                                            />
                                         </div>
-                                        <div className="w-5 h-5 rounded-full" style={{ backgroundColor: stringToColor(teamStat.teamNum) }} />
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
+
                     </ResizablePanel>
                     <ResizableHandle />
                     <ResizablePanel defaultSize={75} minSize={50} maxSize={75} className="p-5 my-auto">
@@ -286,7 +322,11 @@ export default function Content({ defaultTeams, colorHash }: {
                                             tickMargin={8}
                                             tickFormatter={(date: Date) => new Date(date).toLocaleTimeString()}
                                         />
-                                        <Tooltip content={<CustomTooltip />} />
+                                        {
+                                            buttonsHidden ? null : (
+                                                <Tooltip content={<CustomTooltip />} />
+                                            )
+                                        }
                                         <YAxis tickLine={false} axisLine={false} />
                                         {teams.map((team) => (
                                             <Line
@@ -296,6 +336,7 @@ export default function Content({ defaultTeams, colorHash }: {
                                                 type="monotone"
                                                 stroke={stringToColor(team.teamNum)}
                                                 strokeWidth={2}
+                                                dot={false}
                                             />
                                         ))}
                                     </LineChart>
@@ -344,10 +385,10 @@ export default function Content({ defaultTeams, colorHash }: {
                     </DialogTrigger>
                     <DialogContent>
                         <DialogTitle>
-                            Hide Buttons
+                            Hide
                         </DialogTitle>
                         <DialogDescription>
-                            You can always bring them back by clicking the button in the bottom right corner
+                            You can always bring button controls back by clicking the &quot;Show&quot; button in the bottom right corner. Are you sure you want to hide them?
                         </DialogDescription>
                         <DialogFooter>
                             <Button variant="outline" onClick={() => setOpenHide(false)}>Cancel</Button>
@@ -369,7 +410,7 @@ export default function Content({ defaultTeams, colorHash }: {
                     </DialogTrigger>
                     <DialogContent>
                         <DialogTitle>
-                            Teams
+                            Edit
                         </DialogTitle>
                         <DialogDescription>
                             Enter the teams you want to track below
@@ -396,20 +437,6 @@ export default function Content({ defaultTeams, colorHash }: {
                                             </Button>
                                         </div>
                                     ))}
-                                    <div className="items-top flex space-x-2">
-                                        <Checkbox id="refreshColorHash" />
-                                        <div className="grid gap-1.5 leading-none">
-                                            <label
-                                                htmlFor="refreshColorHash"
-                                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                                            >
-                                            Refresh Color Hash
-                                            </label>
-                                            <p className="text-sm text-muted-foreground">
-                                            This will change the colors of the teams
-                                            </p>
-                                        </div>
-                                    </div>
                                     <div className="flex gap-x-2 w-full">
                                         <Button className="w-full" type="submit" variant={"outline"} disabled={isTeamInputsSame()}>
                                             Save Teams
