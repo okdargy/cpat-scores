@@ -25,6 +25,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Payload } from "recharts/types/component/DefaultTooltipContent";
 import Link from "next/link";
+import { ColorPicker } from "@/components/ui/color-picker";
+import { TRPCClientError } from "@trpc/client";
 
 interface TeamStats {
     teamNum: string;
@@ -59,33 +61,35 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
     return null;
 }
 
-export default function Content({ defaultTeams, colorHash }: {
+const PASTEL_COLORS = [
+    "ffadad",
+    "ffd6a5",
+    "fdffb6",
+    "caffbf",
+    "9bf6ff",
+    "a0c4ff",
+    "bdb2ff",
+    "ffc6ff",
+];
+
+export default function Content({ defaultTeams }: {
     defaultTeams: {
         teamNum: string;
         teamName: string;
-    }[],
-    colorHash: number | undefined;
+        color: string | null; // from migration
+    }[]
 }) {
-    const [cHash, setColorHash] = useState(colorHash || 0);
     const [buttonsHidden, setButtonsHidden] = useState(false);
     const [openEdit, setOpenEdit] = useState(false);
     const [openHide, setOpenHide] = useState(false);
-    const [teams, setTeams] = useState<{ teamNum: string, teamName: string }[]>(defaultTeams);
-    const [teamInputs, setTeamInputs] = useState<{ teamNum: string, teamName: string }[]>(defaultTeams);
+    const [teams, setTeams] = useState<{ teamNum: string, teamName: string, color: string }[]>(defaultTeams.map(team => ({ ...team, color: team.color || '#fff' })));
+    const [teamInputs, setTeamInputs] = useState<{ id: number, teamNum: string, teamName: string, color: string }[]>(defaultTeams.map(team => ({ ...team, color: team.color || '#fff', id: Math.random() })));
     const [teamStats, setTeamStats] = useState<TeamStats[]>(teams.map(team => ({ teamNum: team.teamNum, teamName: team.teamName, score: 0, state: "Unknown", division: "Unknown" })));
     const [historicalStats, setHistoricalStats] = useState<TeamHistoricalStats[]>([]);
     const { toast } = useToast();
 
-    const stringToColor = (str: string) => {
-        let hash = cHash;
-
-        for (let i = 0; i < str.length; i++) {
-            hash = str.charCodeAt(i) + ((hash << 5) - hash);
-        }
-        // Introduce more randomness
-        hash = Math.abs(hash * 16777619);
-        const color = `hsl(${hash % 360}, 70%, 50%)`;
-        return color;
+    const handleColorChange = (id: number, color: string) => {
+        setTeamInputs(teamInputs.map((team) => team.id === id ? { ...team, color } : team));
     };
 
     const handleInputChange = (index: number, field: string, value: string) => {
@@ -100,10 +104,26 @@ export default function Content({ defaultTeams, colorHash }: {
     };
 
     const handleAddInput = () => {
-        setTeamInputs([...teamInputs, { teamNum: "", teamName: "" }]);
+        setTeamInputs([...teamInputs, { id: Math.random(), teamNum: "", teamName: "", color: PASTEL_COLORS[teamInputs.length % PASTEL_COLORS.length] }]);
     };
 
-    const saveTeams = (teamsToSave: { teamNum: string, teamName: string }[]) => {
+    const saveTeams = (teamsToSave: { teamNum: string, teamName: string, color: string }[]) => {
+        if (teamsToSave.some((team) => team.teamNum === "" || team.teamName === "")) {
+            toast({
+                title: "Invalid team",
+                description: "Please make sure all teams have a team number and name"
+            });
+            return false;
+        }
+
+        if (teamsToSave.some((team) => !/^\d{2}-\d{4}$/.test(team.teamNum))) {
+            toast({
+                title: "Invalid team number",
+                description: "Please make sure all team numbers are in the format: xx-xxxx"
+            });
+            return false;
+        }
+        
         setCookie("teams", btoa(JSON.stringify(teamsToSave)));
         setTeams(teamsToSave);
         return true;
@@ -114,7 +134,7 @@ export default function Content({ defaultTeams, colorHash }: {
             return false;
         }
 
-        return teamInputs.every((team, index) => team.teamNum === teams[index].teamNum && team.teamName === teams[index].teamName);
+        return teamInputs.every((team, index) => team.teamNum === teams[index].teamNum && team.teamName === teams[index].teamName && team.color === teams[index].color);
     };
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -124,11 +144,6 @@ export default function Content({ defaultTeams, colorHash }: {
         const filteredTeams = teamInputs.filter((team, index) => teamInputs.findIndex((t) => t.teamNum === team.teamNum) === index);
 
         if (filteredTeams.length === 0) {
-            toast({
-                title: "No teams saved",
-                description: "Please enter at least one team"
-            })
-
             setTeamStats([]);
             setHistoricalStats([]);
         } else {
@@ -137,20 +152,12 @@ export default function Content({ defaultTeams, colorHash }: {
                     title: "Teams saved",
                     description: "Teams have been saved successfully"
                 });
-            } else {
-                toast({
-                    title: "Error saving teams",
-                    description: "An error occurred while saving teams"
-                });
+                
+                setOpenEdit(false);
+                setTeamStats(teams.map(team => ({ teamNum: team.teamNum, score: 0, state: "Unknown", division: "Unknown" })));
+                setHistoricalStats([]);
             }
         }
-
-        // reset data
-        setTeamStats(teams.map(team => ({ teamNum: team.teamNum, score: 0, state: "Unknown", division: "Unknown" })));
-        setHistoricalStats([]);
-
-        setOpenEdit(false);
-        return true;
     };
 
     const getTeamStats = trpc.getTeamScores.useMutation({
@@ -177,7 +184,16 @@ export default function Content({ defaultTeams, colorHash }: {
 
             setTeamStats([...tStats, ...missingTeamStats]);
         }, onError: (error) => {
-            console.error(error);
+            toast({
+                title: "There was an error fetching the stats for the teams",
+                description: "Please try again later.",
+            });
+
+            if(error instanceof TRPCClientError) {
+                console.log(error.message);
+            } else {
+                console.log(error);
+            }
         }
     })
 
@@ -211,7 +227,16 @@ export default function Content({ defaultTeams, colorHash }: {
             console.log('refreshed with', teams.length, 'teams and', historicalStats.length, 'data points as well as', teamStats.length, 'team stats at', new Date().toLocaleTimeString());
             console.log('historical stats', historicalStats);
         }, onError: (error) => {
-            console.error(error);
+            toast({
+                title: "There was an error fetching data for the graph",
+                description: "Are you sure you entered the correct team numbers?",
+            });
+
+            if(error instanceof TRPCClientError) {
+                console.log(error.message);
+            } else {
+                console.log(error);
+            }
         }
     });
 
@@ -226,12 +251,6 @@ export default function Content({ defaultTeams, colorHash }: {
     const intervalId = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
-        if (!colorHash) {
-            const hash = Math.floor(Math.random() * 360);
-            setColorHash(hash);
-            setCookie("colorHash", hash.toString());
-        }
-
         getTeamScores();
         getGraphScores();
 
@@ -262,7 +281,7 @@ export default function Content({ defaultTeams, colorHash }: {
                     className="w-full h-full"
                 >
                     <ResizablePanel defaultValue={25} maxSize={50} minSize={25}>
-                        <div className="flex flex-col gap-y-2 h-full divide-y">
+                        <div className="flex flex-col gap-y-2 h-full divide-y min-w-full">
                             {teamStats.map((teamStat) => {
                                 const teamName =
                                     teams.find((team) => team.teamNum === teamStat.teamNum)?.teamName || "-";
@@ -283,23 +302,27 @@ export default function Content({ defaultTeams, colorHash }: {
                                                 <h1 className="text-5xl font-semibold text-neutral-100 truncate">
                                                     {teamStat.teamNum}
                                                 </h1>
-                                                <h2>
-                                                    {teamStat.score}{" "}
-                                                    <span className="text-neutral-500 truncate">
-                                                        - from {teamStat.state} ({teamStat.division})
-                                                    </span>
-                                                </h2>
-                                            </div>
+                                                {teamStat.state !== "Unknown" ? (
+                                                    <h2>
+                                                            {teamStat.score}{" "}
+                                                            <span className="text-neutral-500 truncate">
+                                                                - from {teamStat.state} ({teamStat.division})
+                                                            </span>
+                                                    </h2> ) : (
+                                                        <h2 className="text-neutral-500 truncate">
+                                                            Waiting to start...
+                                                        </h2>
+                                                    )}
+                                            </div> 
                                             <div
                                                 className="w-5 h-5 rounded-full flex-shrink-0"
-                                                style={{ backgroundColor: stringToColor(teamStat.teamNum) }}
+                                                style={{ backgroundColor: teams.find((team) => team.teamNum === teamStat.teamNum)?.color }}
                                             />
                                         </div>
                                     </div>
                                 );
                             })}
                         </div>
-
                     </ResizablePanel>
                     <ResizableHandle />
                     <ResizablePanel defaultSize={75} minSize={50} maxSize={75} className="p-5 my-auto">
@@ -332,9 +355,9 @@ export default function Content({ defaultTeams, colorHash }: {
                                             <Line
                                                 key={team.teamNum}
                                                 dataKey={team.teamNum}
-                                                fill={stringToColor(team.teamNum)}
+                                                fill={team.color}
                                                 type="monotone"
-                                                stroke={stringToColor(team.teamNum)}
+                                                stroke={team.color}
                                                 strokeWidth={2}
                                                 dot={false}
                                             />
@@ -410,31 +433,34 @@ export default function Content({ defaultTeams, colorHash }: {
                     </DialogTrigger>
                     <DialogContent>
                         <DialogTitle>
-                            Edit
+                            Edit Teams
                         </DialogTitle>
                         <DialogDescription>
-                            Enter the teams you want to track below
+                            Enter the teams you want to track below. Customize their names and colors to your preference!
                         </DialogDescription>
                         <div>
                             <div>
                                 <form className="flex flex-col gap-y-3" onSubmit={handleSubmit}>
                                     {teamInputs.map((team, index) => (
-                                        <div key={index} className="flex gap-x-2">
-                                            <Input
-                                                type="text"
-                                                placeholder="Team Number"
-                                                value={team.teamNum}
-                                                onChange={(e) => handleInputChange(index, "teamNum", e.target.value)}
-                                            />
-                                            <Input
-                                                type="text"
-                                                placeholder="Team Name"
-                                                value={team.teamName}
-                                                onChange={(e) => handleInputChange(index, "teamName", e.target.value)}
-                                            />
-                                            <Button type="button" onClick={() => handleRemoveInput(index)} variant={"outline"}>
-                                                <Minus />
-                                            </Button>
+                                        <div key={index} className="flex gap-x-3">
+                                            <ColorPicker color={team.color} onChange={(color) => handleColorChange(team.id, color)} />
+                                            <div className="flex gap-x-2">
+                                                <Input
+                                                    type="text"
+                                                    placeholder="Team Number"
+                                                    value={team.teamNum}
+                                                    onChange={(e) => handleInputChange(index, "teamNum", e.target.value)}
+                                                />
+                                                <Input
+                                                    type="text"
+                                                    placeholder="Team Name"
+                                                    value={team.teamName}
+                                                    onChange={(e) => handleInputChange(index, "teamName", e.target.value)}
+                                                />
+                                                <Button type="button" onClick={() => handleRemoveInput(index)} variant={"outline"}>
+                                                    <Minus />
+                                                </Button>
+                                            </div>
                                         </div>
                                     ))}
                                     <div className="flex gap-x-2 w-full">

@@ -7,11 +7,10 @@ export default async function Home() {
   let defaultTeams: {
     teamNum: string;
     teamName: string;
+    color: string | null;
   }[]
 
   const teamsEncrypted = cookieStore.get("teams");
-  const colorHash = cookieStore.get("colorHash");
-  const colorHashValue = colorHash ? parseInt(colorHash.value) : undefined;
 
   if(!teamsEncrypted) {
     defaultTeams = [];
@@ -22,7 +21,7 @@ export default async function Home() {
 
   return (
     <div className="flex h-screen p-3">
-      <Content defaultTeams={defaultTeams} colorHash={colorHashValue} />
+      <Content defaultTeams={defaultTeams} />
     </div>
   );
 }
