@@ -62,14 +62,14 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
 }
 
 const PASTEL_COLORS = [
-    "ffadad",
-    "ffd6a5",
-    "fdffb6",
-    "caffbf",
-    "9bf6ff",
-    "a0c4ff",
-    "bdb2ff",
-    "ffc6ff",
+    "#ffadad",
+    "#ffd6a5",
+    "#fdffb6",
+    "#caffbf",
+    "#9bf6ff",
+    "#a0c4ff",
+    "#bdb2ff",
+    "#ffc6ff",
 ];
 
 export default function Content({ defaultTeams }: {
