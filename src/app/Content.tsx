@@ -140,7 +140,6 @@ export default function Content({ defaultTeams }: {
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
 
-        // prevent duplicate team ids
         const filteredTeams = teamInputs.filter((team, index) => teamInputs.findIndex((t) => t.teamNum === team.teamNum) === index);
 
         if (filteredTeams.length === 0) {
@@ -162,7 +161,6 @@ export default function Content({ defaultTeams }: {
 
     const getTeamStats = trpc.getTeamScores.useMutation({
         onSuccess: ({ data }: ScoreResponse) => {
-            // get only the teams from data that are also in teams
             const filteredData = data.filter((team) => teams.map((t) => t.teamNum).includes(team.team_number));
 
             const tStats = filteredData.map((team) => ({
@@ -172,10 +170,7 @@ export default function Content({ defaultTeams }: {
                 division: team.division,
             }));
 
-            // if the team isn't included, show the team with a score of 0
-            const missingTeams = teams.filter((team) => !tStats.map((t) => t.teamNum).includes(team.teamNum));
-
-            const missingTeamStats = missingTeams.map((team) => ({
+            const missingTeamStats = teams.filter((team) => !tStats.map((t) => t.teamNum).includes(team.teamNum)).map((team) => ({
                 teamNum: team.teamNum,
                 score: 0,
                 state: "Unknown",
@@ -199,29 +194,20 @@ export default function Content({ defaultTeams }: {
 
     const getTeamGraphs = trpc.getTeamGraphs.useMutation({
         onSuccess: (data) => {
-            console.log('before hand', data)
             const combinedData: { [key: string]: { date: string, [key: string]: number | string } } = {};
 
-            // Iterate over each team and their stats
             Object.entries(data).forEach(([team, stats]) => {
                 stats.forEach((stat) => {
                     const [datePart, timePart] = stat.time.split(' ');
                     const [month, day] = datePart.split('/');
                     const formattedDate = new Date(`${new Date().getFullYear()}-${month}-${day}T${timePart}:00`).toISOString();
 
-                    // If the date is not already in the map, add it
-                    if (!combinedData[formattedDate]) {
-                        combinedData[formattedDate] = { date: formattedDate };
-                    }
-
-                    // Add the team's value to the corresponding date
+                    if (!combinedData[formattedDate]) combinedData[formattedDate] = { date: formattedDate };
                     combinedData[formattedDate][team] = stat.value;
                 });
             });
 
-            // Convert the map to an array
             const historicalStats = Object.values(combinedData);
-
 
             setHistoricalStats(historicalStats);
             console.log('refreshed with', teams.length, 'teams and', historicalStats.length, 'data points as well as', teamStats.length, 'team stats at', new Date().toLocaleTimeString());
