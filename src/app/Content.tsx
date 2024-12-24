@@ -61,7 +61,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
     return null;
 }
 
-const PASTEL_COLORS = [
+const DEFAULT_COLORS = [
     "#ffadad",
     "#ffd6a5",
     "#fdffb6",
@@ -104,7 +104,7 @@ export default function Content({ defaultTeams }: {
     };
 
     const handleAddInput = () => {
-        setTeamInputs([...teamInputs, { id: Math.random(), teamNum: "", teamName: "", color: PASTEL_COLORS[teamInputs.length % PASTEL_COLORS.length] }]);
+        setTeamInputs([...teamInputs, { id: Math.random(), teamNum: "", teamName: "", color: DEFAULT_COLORS[teamInputs.length % DEFAULT_COLORS.length] }]);
     };
 
     const saveTeams = (teamsToSave: { teamNum: string, teamName: string, color: string }[]) => {
@@ -130,10 +130,7 @@ export default function Content({ defaultTeams }: {
     };
 
     const isTeamInputsSame = () => {
-        if (teamInputs.length !== teams.length) {
-            return false;
-        }
-
+        if (teamInputs.length !== teams.length) return false;
         return teamInputs.every((team, index) => team.teamNum === teams[index].teamNum && team.teamName === teams[index].teamName && team.color === teams[index].color);
     };
 
@@ -161,6 +158,7 @@ export default function Content({ defaultTeams }: {
 
     const getTeamStats = trpc.getTeamScores.useMutation({
         onSuccess: ({ data }: ScoreResponse) => {
+            if(data.length === 0) return;
             const filteredData = data.filter((team) => teams.map((t) => t.teamNum).includes(team.team_number));
 
             const tStats = filteredData.map((team) => ({
@@ -194,6 +192,7 @@ export default function Content({ defaultTeams }: {
 
     const getTeamGraphs = trpc.getTeamGraphs.useMutation({
         onSuccess: (data) => {
+            if(Object.keys(data).length === 0) return
             const combinedData: { [key: string]: { date: string, [key: string]: number | string } } = {};
 
             Object.entries(data).forEach(([team, stats]) => {
@@ -237,24 +236,23 @@ export default function Content({ defaultTeams }: {
     const intervalId = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
-        getTeamScores();
-        getGraphScores();
-
-        console.log('loaded with', teams.length, 'teams and', historicalStats.length, 'data points as well as', teamStats.length, 'team stats at', new Date().toLocaleTimeString());
-
-        if (intervalId.current) {
-            clearInterval(intervalId.current);
-        }
-
-        intervalId.current = setInterval(() => {
+        if(teams.length > 0) {
             getTeamScores();
             getGraphScores();
+
+            console.log('loaded with', teams.length, 'teams and', historicalStats.length, 'data points as well as', teamStats.length, 'team stats at', new Date().toLocaleTimeString());
+        }
+
+        if (intervalId.current) clearInterval(intervalId.current);
+        intervalId.current = setInterval(() => {
+            if(teams.length > 0) {
+                getTeamScores();
+                getGraphScores();
+            }
         }, 1000 * 60); // 5 minutes
 
         return () => {
-            if (intervalId.current) {
-                clearInterval(intervalId.current);
-            }
+            if(intervalId.current) clearInterval(intervalId.current);
         };
     }, [teams])
 

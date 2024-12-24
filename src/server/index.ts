@@ -5,17 +5,16 @@ const teamIdSchema = z.string().regex(/^\d{2}-\d{4}$/);
 
 export const appRouter = router({
     getTeamScores: publicProcedure.input(z.array(teamIdSchema)).mutation(async (opts) => {
+        if(opts.input.length == 0) return {}
         const response = await fetch(`https://scoreboard.uscyberpatriot.org/api/team/scores.php?team[]=${opts.input.join("&team[]=")}`);
-        console.log(response.url);
         return response.json();
     }),
     getTeamGraphs: publicProcedure.input(z.array(teamIdSchema)).mutation(async (opts) => {
-        const numTeams = opts.input.length;
+        if(opts.input.length == 0) return {}
         const response = await fetch(`https://scoreboard.uscyberpatriot.org/api/image/chart.php?team[]=${opts.input.join("&team[]=")}`);
         const data = await response.json();
 
-        console.log(response.url);
-        const organizedData = processData(data, numTeams, opts.input);
+        const organizedData = processData(data, opts.input.length, opts.input);
         return organizedData;
     })
 });
