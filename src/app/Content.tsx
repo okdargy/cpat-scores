@@ -27,6 +27,7 @@ import { Payload } from "recharts/types/component/DefaultTooltipContent";
 import Link from "next/link";
 import { ColorPicker } from "@/components/ui/color-picker";
 import { TRPCClientError } from "@trpc/client";
+import { Textarea } from "@/components/ui/textarea";
 
 interface TeamStats {
     teamNum: string;
@@ -86,6 +87,7 @@ export default function Content({ defaultTeams }: {
     const [teamInputs, setTeamInputs] = useState<{ id: number, teamNum: string, teamName: string, color: string }[]>(defaultTeams.map(team => ({ ...team, color: team.color || '#fff', id: Math.random() })));
     const [teamStats, setTeamStats] = useState<TeamStats[]>(teams.map(team => ({ teamNum: team.teamNum, teamName: team.teamName, score: 0, state: "Unknown", division: "Unknown" })));
     const [historicalStats, setHistoricalStats] = useState<TeamHistoricalStats[]>([]);
+    const [bulkImportText, setBulkImportText] = useState("");
     const { toast } = useToast();
 
     const handleColorChange = (id: number, color: string) => {
@@ -105,6 +107,23 @@ export default function Content({ defaultTeams }: {
 
     const handleAddInput = () => {
         setTeamInputs([...teamInputs, { id: Math.random(), teamNum: "", teamName: "", color: DEFAULT_COLORS[teamInputs.length % DEFAULT_COLORS.length] }]);
+    };
+
+    const handleBulkImport = () => {
+        const lines = bulkImportText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+        const newTeams = lines.map((teamNum, index) => ({
+            id: Math.random(),
+            teamNum: teamNum,
+            teamName: `Team ${teamNum}`,
+            color: DEFAULT_COLORS[(teamInputs.length + index) % DEFAULT_COLORS.length]
+        }));
+
+        setTeamInputs([...teamInputs, ...newTeams]);
+        setBulkImportText("");
+        toast({
+            title: "Teams imported",
+            description: `Successfully imported ${newTeams.length} team(s)`
+        });
     };
 
     const saveTeams = (teamsToSave: { teamNum: string, teamName: string, color: string }[]) => {
@@ -260,7 +279,7 @@ export default function Content({ defaultTeams }: {
                     className="w-full h-full"
                 >
                     <ResizablePanel defaultValue={25} maxSize={50} minSize={25}>
-                        <div className="flex flex-col gap-y-2 h-full divide-y min-w-full">
+                        <div className="flex flex-col gap-y-2 h-full divide-y min-w-full overflow-y-auto">
                             {teamStats.map((teamStat) => {
                                 const teamName =
                                     teams.find((team) => team.teamNum === teamStat.teamNum)?.teamName || "-";
@@ -418,7 +437,26 @@ export default function Content({ defaultTeams }: {
                             Enter the teams you want to track below. Customize their names and colors to your preference!
                         </DialogDescription>
                         <div>
-                            <div>
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <h3 className="text-sm font-medium">Bulk Import</h3>
+                                    <div className="flex gap-x-2">
+                                        <Textarea
+                                            placeholder="Paste team numbers (one per line)"
+                                            value={bulkImportText}
+                                            onChange={(e) => setBulkImportText(e.target.value)}
+                                            className="flex-1"
+                                        />
+                                        <Button 
+                                            type="button" 
+                                            onClick={handleBulkImport} 
+                                            variant={"outline"}
+                                            disabled={!bulkImportText.trim()}
+                                        >
+                                            Import
+                                        </Button>
+                                    </div>
+                                </div>
                                 <form className="flex flex-col gap-y-3" onSubmit={handleSubmit}>
                                     {teamInputs.map((team, index) => (
                                         <div key={index} className="flex gap-x-3">

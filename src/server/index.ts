@@ -67,8 +67,6 @@ function populateOrganizedData(numTeams: number, rows: { c: { v: string | number
             const teamLabel = cols[index + 1].label;
             const teamNumber = numTeams === 1 ? teams[0] : teamLabel.split('_')[0];
 
-            console.log(teamNumber, time, value);
-
             colsRestore[teamLabel] = value as number;
             const existingDataPoint = organizedData[teamNumber].find(dataPoint => dataPoint.time === time);
 
@@ -97,7 +95,6 @@ function processData(data: Data, numTeams: number, teams: string[]): OrganizedDa
         const colsRestore = initializeColsRestore(cols);
         const organizedData = initializeOrganizedData(cols, teams);
         
-        console.log(colsRestore, organizedData);
         populateOrganizedData(numTeams, rows, cols, colsRestore, organizedData, teams);
 
         return organizedData;
