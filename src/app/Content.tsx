@@ -139,20 +139,15 @@ export default function Content({ defaultTeams }: {
 
         const filteredTeams = teamInputs.filter((team, index) => teamInputs.findIndex((t) => t.teamNum === team.teamNum) === index);
 
-        if (filteredTeams.length === 0) {
-            setTeamStats([]);
+        if (saveTeams(filteredTeams)) {
+            toast({
+                title: "Teams saved",
+                description: filteredTeams.length === 0 ? "All teams have been removed" : "Teams have been saved successfully"
+            });
+            
+            setOpenEdit(false);
+            setTeamStats(filteredTeams.map(team => ({ teamNum: team.teamNum, score: 0, state: "Unknown", division: "Unknown" })));
             setHistoricalStats([]);
-        } else {
-            if (saveTeams(filteredTeams)) {
-                toast({
-                    title: "Teams saved",
-                    description: "Teams have been saved successfully"
-                });
-                
-                setOpenEdit(false);
-                setTeamStats(teams.map(team => ({ teamNum: team.teamNum, score: 0, state: "Unknown", division: "Unknown" })));
-                setHistoricalStats([]);
-            }
         }
     };
 
