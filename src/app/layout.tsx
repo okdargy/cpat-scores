@@ -12,8 +12,10 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "CyberPatriots Projecter View Scoreboard",
-  description: "An auto-updating scoreboard viewer for mulitple teams in CyberPatriots, built with Next.js and TypeScript.",
+  title: "CyberPatriot Live Scoreboard View",
+  description: "An auto-updating scoreboard viewer for multiple teams in CyberPatriot, built with Next.js and TypeScript. Helpful for coaches to put on a shared screen like a projector during competitions.",
+  keywords: ['cyberpatriot scoreboard', 'live scoreboard', 'projector view', 'coach tool'],
+  robots: "index, follow",
 };
 
 export default function RootLayout({
