@@ -9,7 +9,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Eye, EyeClosed, LoaderCircle, Minus, Pencil, Plus, RefreshCcw } from "lucide-react";
+import { Eye, EyeClosed, LoaderCircle, Minus, Pencil, Plus, RefreshCcw, FileText } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { setCookie } from "cookies-next";
 import { useEffect, useRef, useState } from "react";
@@ -83,6 +83,7 @@ export default function Content({ defaultTeams }: {
     const [buttonsHidden, setButtonsHidden] = useState(false);
     const [openEdit, setOpenEdit] = useState(false);
     const [openHide, setOpenHide] = useState(false);
+    const [showBulkImport, setShowBulkImport] = useState(false);
     const [teams, setTeams] = useState<{ teamNum: string, teamName: string, color: string }[]>(defaultTeams.map(team => ({ ...team, color: team.color || '#fff' })));
     const [teamInputs, setTeamInputs] = useState<{ id: number, teamNum: string, teamName: string, color: string }[]>(defaultTeams.map(team => ({ ...team, color: team.color || '#fff', id: Math.random() })));
     const [teamStats, setTeamStats] = useState<TeamStats[]>(teams.map(team => ({ teamNum: team.teamNum, teamName: team.teamName, score: 0, state: "Unknown", division: "Unknown" })));
@@ -111,15 +112,29 @@ export default function Content({ defaultTeams }: {
 
     const handleBulkImport = () => {
         const lines = bulkImportText.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-        const newTeams = lines.map((teamNum, index) => ({
-            id: Math.random(),
-            teamNum: teamNum,
-            teamName: `Team ${teamNum}`,
-            color: DEFAULT_COLORS[(teamInputs.length + index) % DEFAULT_COLORS.length]
-        }));
+        const newTeams = lines.map((teamStr, index) => {
+            const [teamNum, teamName] = teamStr.split(',').map(part => part.trim());
+
+            if (!teamName) {
+                return {
+                    id: Math.random(),
+                    teamNum: teamNum,
+                    teamName: `Team ${teamNum}`,
+                    color: DEFAULT_COLORS[(teamInputs.length + index) % DEFAULT_COLORS.length]
+                }
+            } else {
+                return {
+                    id: Math.random(),
+                    teamNum: teamNum,
+                    teamName: teamName,
+                    color: DEFAULT_COLORS[(teamInputs.length + index) % DEFAULT_COLORS.length]
+                }
+            }
+        });
 
         setTeamInputs([...teamInputs, ...newTeams]);
         setBulkImportText("");
+        setShowBulkImport(false);
         toast({
             title: "Teams imported",
             description: `Successfully imported ${newTeams.length} team(s)`
@@ -285,7 +300,10 @@ export default function Content({ defaultTeams }: {
                                     teams.find((team) => team.teamNum === teamStat.teamNum)?.teamName || "-";
 
                                 return (
-                                    <div
+                                    <Link
+                                        href={`https://scoreboard.uscyberpatriot.org/team.php?team=${teamStat.teamNum}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
                                         key={teamStat.teamNum}
                                         className="flex flex-col justify-center h-full my-auto px-5"
                                     >
@@ -317,7 +335,7 @@ export default function Content({ defaultTeams }: {
                                                 style={{ backgroundColor: teams.find((team) => team.teamNum === teamStat.teamNum)?.color }}
                                             />
                                         </div>
-                                    </div>
+                                    </Link>
                                 );
                             })}
                         </div>
@@ -438,25 +456,27 @@ export default function Content({ defaultTeams }: {
                         </DialogDescription>
                         <div>
                             <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <h3 className="text-sm font-medium">Bulk Import</h3>
-                                    <div className="flex gap-x-2">
-                                        <Textarea
-                                            placeholder="Paste team numbers (one per line)"
-                                            value={bulkImportText}
-                                            onChange={(e) => setBulkImportText(e.target.value)}
-                                            className="flex-1"
-                                        />
-                                        <Button 
-                                            type="button" 
-                                            onClick={handleBulkImport} 
-                                            variant={"outline"}
-                                            disabled={!bulkImportText.trim()}
-                                        >
-                                            Import
-                                        </Button>
+                                {showBulkImport && (
+                                    <div className="space-y-2">
+                                        <h3 className="text-sm font-medium">Bulk Import</h3>
+                                        <div className="flex gap-x-2">
+                                            <Textarea
+                                                placeholder={`18-0001,Team Name\n18-0002,Another Team`}
+                                                value={bulkImportText}
+                                                onChange={(e) => setBulkImportText(e.target.value)}
+                                                className="flex-1"
+                                            />
+                                            <Button 
+                                                type="button" 
+                                                onClick={handleBulkImport} 
+                                                variant={"outline"}
+                                                disabled={!bulkImportText.trim()}
+                                            >
+                                                Import
+                                            </Button>
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                                 <form className="flex flex-col gap-y-3" onSubmit={handleSubmit}>
                                     {teamInputs.map((team, index) => (
                                         <div key={index} className="flex gap-x-3">
@@ -486,6 +506,14 @@ export default function Content({ defaultTeams }: {
                                         </Button>
                                         <Button type="button" onClick={handleAddInput} variant={"outline"}>
                                             <Plus />
+                                        </Button>
+                                        <Button 
+                                            type="button" 
+                                            onClick={() => setShowBulkImport(!showBulkImport)} 
+                                            variant={"outline"}
+                                            title="Toggle bulk import"
+                                        >
+                                            <FileText />
                                         </Button>
                                     </div>
                                 </form>
