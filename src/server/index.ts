@@ -3,11 +3,101 @@ import { router, publicProcedure } from './trpc';
 
 const teamIdSchema = z.string().regex(/^\d{2}-\d{4}$/);
 
+type TeamScore = {
+    team_id: number;
+    team_number: string;
+    images: number;
+    play_time: string;
+    score_time: string;
+    ccs_score: string;
+    location: string;
+    division: string;
+    tier: string;
+    code: string;
+};
+
+type TeamScoreWithRankings = TeamScore & {
+    national_rank: number;
+    state_rank: number;
+};
+
 export const appRouter = router({
     getTeamScores: publicProcedure.input(z.array(teamIdSchema)).mutation(async (opts) => {
         if(opts.input.length == 0) return {}
-        const response = await fetch(`https://scoreboard.uscyberpatriot.org/api/team/scores.php?team[]=${opts.input.join("&team[]=")}`);
-        return response.json();
+        
+        // Fetch all teams to calculate rankings (unfortunately needed for accurate rankings)
+        const allTeamsResponse = await fetch('https://scoreboard.uscyberpatriot.org/api/team/scores.php');
+        const allTeamsData = await allTeamsResponse.json();
+        const allTeams: TeamScore[] = allTeamsData.data || [];
+        
+        // Group teams by state/location for state rankings
+        const teamsByState = new Map<string, TeamScore[]>();
+        allTeams.forEach(team => {
+            const location = team.location;
+            if (!teamsByState.has(location)) {
+                teamsByState.set(location, []);
+            }
+            teamsByState.get(location)!.push(team);
+        });
+        
+        // Filter to only the requested teams and add rankings
+        const requestedTeams = allTeams.filter(team => 
+            opts.input.includes(team.team_number)
+        );
+        
+        const teamsWithRankings: TeamScoreWithRankings[] = requestedTeams.map(team => {
+            // National rank is the index in the sorted array + 1
+            const nationalRank = allTeams.findIndex(t => t.team_number === team.team_number) + 1;
+            
+            // State rank
+            const stateTeams = teamsByState.get(team.location) || [];
+            const stateRank = stateTeams.findIndex(t => t.team_number === team.team_number) + 1;
+            
+            return {
+                ...team,
+                national_rank: nationalRank,
+                state_rank: stateRank
+            };
+        });
+        
+        return { data: teamsWithRankings };
+    }),
+    getAllTeamsWithRankings: publicProcedure.query(async () => {
+        const response = await fetch('https://scoreboard.uscyberpatriot.org/api/team/scores.php');
+        const data = await response.json();
+        const teams: TeamScore[] = data.data || [];
+
+        // Add national rankings (teams are already sorted by ccs_score from the API)
+        const teamsWithNationalRank = teams.map((team, index) => ({
+            ...team,
+            national_rank: index + 1
+        }));
+
+        // Group teams by state/location for state rankings
+        const teamsByState = new Map<string, TeamScore[]>();
+        teams.forEach(team => {
+            const location = team.location;
+            if (!teamsByState.has(location)) {
+                teamsByState.set(location, []);
+            }
+            teamsByState.get(location)!.push(team);
+        });
+
+        // Add state rankings
+        const teamsWithRankings: TeamScoreWithRankings[] = teamsWithNationalRank.map(team => {
+            const stateTeams = teamsByState.get(team.location) || [];
+            const stateRank = stateTeams.findIndex(t => t.team_number === team.team_number) + 1;
+            
+            return {
+                ...team,
+                state_rank: stateRank
+            };
+        });
+
+        return {
+            data: teamsWithRankings,
+            total_teams: teamsWithRankings.length
+        };
     }),
     getTeamGraphs: publicProcedure.input(z.array(teamIdSchema)).mutation(async (opts) => {
         if(opts.input.length == 0) return {}

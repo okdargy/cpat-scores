@@ -4,17 +4,15 @@ import {
     Dialog,
     DialogContent,
     DialogDescription,
-    DialogFooter,
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Eye, EyeClosed, LoaderCircle, Minus, Pencil, Plus, RefreshCcw, FileText } from "lucide-react";
+import { LoaderCircle, Minus, Pencil, Plus, RefreshCcw, FileText, Cog, Grid3x3, StretchHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { setCookie } from "cookies-next";
 import { useEffect, useRef, useState } from "react";
 import { trpc } from "./_trpc/client";
-import { ScoreResponse } from "./_types/api";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, TooltipProps, XAxis, YAxis } from "recharts";
 import {
     ResizableHandle,
@@ -28,12 +26,16 @@ import Link from "next/link";
 import { ColorPicker } from "@/components/ui/color-picker";
 import { TRPCClientError } from "@trpc/client";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 interface TeamStats {
     teamNum: string;
     score: number;
     state: string;
     division: string;
+    nationalRank: number;
+    stateRank: number;
 }
 
 interface TeamHistoricalStats {
@@ -65,11 +67,9 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
 const DEFAULT_COLORS = [
     "#ffadad",
     "#ffd6a5",
-    "#fdffb6",
     "#caffbf",
     "#9bf6ff",
     "#a0c4ff",
-    "#bdb2ff",
     "#ffc6ff",
 ];
 
@@ -80,13 +80,23 @@ export default function Content({ defaultTeams }: {
         color: string | null; // from migration
     }[]
 }) {
-    const [buttonsHidden, setButtonsHidden] = useState(false);
+    const [settings, setSettings] = useState<{
+        display: "vertical" | "horizontal",
+        showLegend: boolean,
+        hideButtons: boolean
+    }>(() => {
+        return {
+            display: "vertical",
+            showLegend: true,
+            hideButtons: false
+        };
+    });
+    const [openSettings, setOpenSettings] = useState(false);
     const [openEdit, setOpenEdit] = useState(false);
-    const [openHide, setOpenHide] = useState(false);
     const [showBulkImport, setShowBulkImport] = useState(false);
     const [teams, setTeams] = useState<{ teamNum: string, teamName: string, color: string }[]>(defaultTeams.map(team => ({ ...team, color: team.color || '#fff' })));
     const [teamInputs, setTeamInputs] = useState<{ id: number, teamNum: string, teamName: string, color: string }[]>(defaultTeams.map(team => ({ ...team, color: team.color || '#fff', id: Math.random() })));
-    const [teamStats, setTeamStats] = useState<TeamStats[]>(teams.map(team => ({ teamNum: team.teamNum, teamName: team.teamName, score: 0, state: "Unknown", division: "Unknown" })));
+    const [teamStats, setTeamStats] = useState<TeamStats[]>(teams.map(team => ({ teamNum: team.teamNum, teamName: team.teamName, score: 0, state: "Unknown", division: "Unknown", nationalRank: 0, stateRank: 0 })));
     const [historicalStats, setHistoricalStats] = useState<TeamHistoricalStats[]>([]);
     const [bulkImportText, setBulkImportText] = useState("");
     const { toast } = useToast();
@@ -141,6 +151,15 @@ export default function Content({ defaultTeams }: {
         });
     };
 
+    const handleBulkExport = () => {
+        const exportText = teamInputs.map(team => `${team.teamNum},${team.teamName}`).join('\n');
+        setBulkImportText(exportText);
+        toast({
+            title: "Teams exported",
+            description: `Exported ${teamInputs.length} team(s) to text area`
+        });
+    };
+    
     const saveTeams = (teamsToSave: { teamNum: string, teamName: string, color: string }[]) => {
         if (teamsToSave.some((team) => team.teamNum === "" || team.teamName === "")) {
             toast({
@@ -180,21 +199,23 @@ export default function Content({ defaultTeams }: {
             });
             
             setOpenEdit(false);
-            setTeamStats(filteredTeams.map(team => ({ teamNum: team.teamNum, score: 0, state: "Unknown", division: "Unknown" })));
+            setTeamStats(filteredTeams.map(team => ({ teamNum: team.teamNum, score: 0, state: "Unknown", division: "Unknown", nationalRank: 0, stateRank: 0 })));
             setHistoricalStats([]);
         }
     };
 
     const getTeamStats = trpc.getTeamScores.useMutation({
-        onSuccess: ({ data }: ScoreResponse) => {
-            if(data.length === 0) return;
-            const filteredData = data.filter((team) => teams.map((t) => t.teamNum).includes(team.team_number));
+        onSuccess: (response) => {
+            if(!response || !('data' in response) || response.data.length === 0) return;
+            const filteredData = response.data.filter((team) => teams.map((t) => t.teamNum).includes(team.team_number));
 
             const tStats = filteredData.map((team) => ({
                 teamNum: team.team_number,
                 score: parseInt(team.ccs_score),
                 state: team.location,
                 division: team.division,
+                nationalRank: team.national_rank,
+                stateRank: team.state_rank,
             }));
 
             const missingTeamStats = teams.filter((team) => !tStats.map((t) => t.teamNum).includes(team.teamNum)).map((team) => ({
@@ -202,6 +223,8 @@ export default function Content({ defaultTeams }: {
                 score: 0,
                 state: "Unknown",
                 division: "Unknown",
+                nationalRank: 0,
+                stateRank: 0,
             }));
 
             setTeamStats([...tStats, ...missingTeamStats]);
@@ -288,69 +311,134 @@ export default function Content({ defaultTeams }: {
     return (
         <div className="w-full h-full flex">
             {teams.length > 0 ? (
-                <ResizablePanelGroup
-                    key={'main'}
-                    direction="horizontal"
-                    className="w-full h-full"
-                >
-                    <ResizablePanel defaultValue={25} maxSize={50} minSize={25}>
-                        <div className="flex flex-col gap-y-2 h-full divide-y min-w-full overflow-y-auto">
-                            {teamStats.map((teamStat) => {
-                                const teamName =
-                                    teams.find((team) => team.teamNum === teamStat.teamNum)?.teamName || "-";
+                settings.display === "horizontal" ? (
+                    <ResizablePanelGroup
+                        key={'main'}
+                        direction="horizontal"
+                        className="w-full h-full"
+                    >
+                        <ResizablePanel defaultValue={25} maxSize={50} minSize={25}>
+                            <div className="flex flex-col gap-y-2 h-full divide-y min-w-full overflow-y-auto">
+                                {teamStats.map((teamStat) => {
+                                    const teamName =
+                                        teams.find((team) => team.teamNum === teamStat.teamNum)?.teamName || "-";
 
-                                return (
-                                    <Link
-                                        href={`https://scoreboard.uscyberpatriot.org/team.php?team=${teamStat.teamNum}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        key={teamStat.teamNum}
-                                        className="flex flex-col justify-center h-full my-auto px-5"
-                                    >
-                                        <div className="flex justify-between items-center">
-                                            <div className="min-w-0 flex flex-col gap-y-1">
-                                                <h3
-                                                    className="text-lg font-semibold text-neutral-200 truncate"
-                                                    title={teamName}
-                                                >
-                                                    {teamName}
-                                                </h3>
-                                                <h1 className="text-5xl font-semibold text-neutral-100 truncate">
-                                                    {teamStat.teamNum}
-                                                </h1>
-                                                {teamStat.state !== "Unknown" ? (
+                                    return (
+                                        <Link
+                                            href={`https://scoreboard.uscyberpatriot.org/team.php?team=${teamStat.teamNum}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            key={teamStat.teamNum}
+                                            className="flex flex-col justify-center h-full my-auto px-5"
+                                        >
+                                        <div className="flex flex-col gap-y-1">
+                                            <div className="flex justify-between items-center gap-x-2">
+                                                <div>
+                                                    <h3
+                                                        className="text-lg font-semibold text-neutral-200 truncate"
+                                                        title={teamName}
+                                                    >
+                                                        {teamName}
+                                                    </h3>
+                                                    <h1 className="text-5xl font-semibold text-neutral-100 truncate">
+                                                        {teamStat.teamNum}
+                                                    </h1>
+                                                </div>
+                                                <div
+                                                    className="w-5 h-5 rounded-full flex-shrink-0"
+                                                    style={{ backgroundColor: teams.find((team) => team.teamNum === teamStat.teamNum)?.color }}
+                                                />
+                                            </div>
+                                            {teamStat.state !== "Unknown" ? (
+                                                <div className="flex justify-between items-center gap-x-3">
                                                     <h2>
-                                                            {teamStat.score}{" "}
-                                                            <span className="text-neutral-500 truncate">
-                                                                - from {teamStat.state} ({teamStat.division})
-                                                            </span>
-                                                    </h2> ) : (
-                                                        <h2 className="text-neutral-500 truncate">
-                                                            Waiting to start...
-                                                        </h2>
-                                                    )}
-                                            </div> 
-                                            <div
-                                                className="w-5 h-5 rounded-full flex-shrink-0"
-                                                style={{ backgroundColor: teams.find((team) => team.teamNum === teamStat.teamNum)?.color }}
+                                                        {teamStat.score}{" "}
+                                                        <span className="text-neutral-500 truncate">
+                                                            - from {teamStat.state} ({teamStat.division})
+                                                        </span>
+                                                    </h2>
+                                                    <h3 className="text-sm text-neutral-400 whitespace-nowrap">
+                                                        #{teamStat.nationalRank} <span className="text-neutral-500">/ #{teamStat.stateRank}</span>
+                                                    </h3>
+                                                </div>
+                                            ) : (
+                                                <h2 className="text-neutral-500 truncate">
+                                                    Waiting to start...
+                                                </h2>
+                                            )}
+                                        </div> 
+                                        </Link>
+                                    );
+                                })}
+                            </div>
+                        </ResizablePanel>
+                        <ResizableHandle />
+                        <ResizablePanel defaultSize={75} minSize={50} maxSize={75} className="p-5 my-auto">
+                            <div className="w-full h-full">
+                                {(historicalStats.length > 0) ? (
+                                    <ResponsiveContainer width={'100%'} height={400}>
+                                        <LineChart
+                                            data={historicalStats.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())}
+                                            margin={{
+                                                left: 24,
+                                                right: 24,
+                                                top: 24,
+                                            }}
+                                        >
+                                            <CartesianGrid vertical={false} />
+                                            <XAxis
+                                                dataKey="date"
+                                                tickLine={false}
+                                                axisLine={false}
+                                                tickMargin={8}
+                                                tickFormatter={(date: Date) => new Date(date).toLocaleTimeString()}
                                             />
+                                            {
+                                                settings.hideButtons ? null : (
+                                                    <Tooltip content={<CustomTooltip />} />
+                                                )
+                                            }
+                                            <YAxis tickLine={false} axisLine={false} />
+                                            {teams.map((team) => (
+                                                <Line
+                                                    key={team.teamNum}
+                                                    dataKey={team.teamNum}
+                                                    fill={team.color}
+                                                    type="monotone"
+                                                    stroke={team.color}
+                                                    strokeWidth={2}
+                                                    dot={false}
+                                                />
+                                            ))}
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <div className="flex flex-col gap-y-3.5 h-full justify-center items-center text-neutral-400">
+                                        <LoaderCircle className="animate-spin" />
+                                        <div className="m-auto text-center max-w-lg">
+                                            <h1 className="text-neutral-500 font-semibold tracking-wide">
+                                                No data to display
+                                            </h1>
+                                            <h2 className="text-neutral-400 text-sm">
+                                                Waiting for more than 1 team to start their round...
+                                            </h2>
                                         </div>
-                                    </Link>
-                                );
-                            })}
-                        </div>
-                    </ResizablePanel>
-                    <ResizableHandle />
-                    <ResizablePanel defaultSize={75} minSize={50} maxSize={75} className="p-5 my-auto">
+                                    </div>
+                                )}
+                            </div>
+                        </ResizablePanel>
+                    </ResizablePanelGroup>
+                ) : (
+                    <div className="grid grid-rows-1 w-full gap-y-5 p-3">
                         <div className="w-full h-full">
                             {(historicalStats.length > 0) ? (
-                                <ResponsiveContainer width={'100%'} height={400}>
+                                <ResponsiveContainer width={'100%'} height={'100%'} >
                                     <LineChart
                                         data={historicalStats.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())}
                                         margin={{
-                                            left: 24,
-                                            right: 24,
-                                            top: 24,
+                                            left: 0,
+                                            right: 0,
+                                            top: 0,
                                         }}
                                     >
                                         <CartesianGrid vertical={false} />
@@ -362,7 +450,7 @@ export default function Content({ defaultTeams }: {
                                             tickFormatter={(date: Date) => new Date(date).toLocaleTimeString()}
                                         />
                                         {
-                                            buttonsHidden ? null : (
+                                            settings.hideButtons ? null : (
                                                 <Tooltip content={<CustomTooltip />} />
                                             )
                                         }
@@ -383,7 +471,7 @@ export default function Content({ defaultTeams }: {
                             ) : (
                                 <div className="flex flex-col gap-y-3.5 h-full justify-center items-center text-neutral-400">
                                     <LoaderCircle className="animate-spin" />
-                                    <div className="m-auto text-center max-w-lg">
+                                    <div className="text-center max-w-lg">
                                         <h1 className="text-neutral-500 font-semibold tracking-wide">
                                             No data to display
                                         </h1>
@@ -394,8 +482,74 @@ export default function Content({ defaultTeams }: {
                                 </div>
                             )}
                         </div>
-                    </ResizablePanel>
-                </ResizablePanelGroup>
+                        <div className="flex gap-x-5 overflow-x-auto no-scrollbar">
+                            {teamStats.map((teamStat) => {
+                                const teamName =
+                                    teams.find((team) => team.teamNum === teamStat.teamNum)?.teamName || "-";
+
+                                return (
+                                    <Link
+                                        href={`https://scoreboard.uscyberpatriot.org/team.php?team=${teamStat.teamNum}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        key={teamStat.teamNum}
+                                        className="border flex flex-col justify-center h-full my-auto px-5 py-3 rounded-lg"
+                                        style={{ borderColor: teams.find((team) => team.teamNum === teamStat.teamNum)?.color }}
+                                    >
+                                        <div className="flex flex-col gap-y-2">
+                                            <div className="flex justify-between items-center gap-x-5 min-w-64">
+                                                <div>
+                                                    <h3
+                                                        className="text-lg font-semibold text-neutral-200 truncate"
+                                                        title={teamName}
+                                                    >
+                                                        {teamName}
+                                                    </h3>
+                                                    <h1 className="text-5xl font-semibold text-neutral-100 truncate">
+                                                        {teamStat.teamNum}
+                                                    </h1>
+                                                </div>
+
+                                            </div>
+                                            {teamStat.state !== "Unknown" ? (
+                                                <div className="flex justify-between items-center gap-x-4 whitespace-nowrap">
+                                                    <h2 className="truncate">
+                                                        {teamStat.score}{" "}
+                                                        <span className="text-neutral-500">
+                                                            - from {teamStat.state} ({teamStat.division})
+                                                        </span>
+                                                    </h2>
+                                                    <h3 className="text-sm text-neutral-400 flex-shrink-0">
+                                                        #{teamStat.nationalRank} <span className="text-neutral-500">/ #{teamStat.stateRank}</span>
+                                                    </h3>
+                                                </div>
+                                            ) : (
+                                                <h2 className="text-neutral-500 truncate">
+                                                    Waiting to start...
+                                                </h2>
+                                            )}
+                                        </div> 
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                        {settings.showLegend && (
+                            <div className="flex gap-x-5">
+                                {teamStats.map((teamStat) => {
+                                    return (
+                                        <div key={teamStat.teamNum + 'legend'} className="flex items-center gap-x-3">
+                                            <div
+                                                className="w-3 h-3 rounded-full flex-shrink-0"
+                                                style={{ backgroundColor: teams.find((team) => team.teamNum === teamStat.teamNum)?.color }}
+                                            />
+                                            <span className="text-sm text-neutral-300 truncate">{teams.find((team) => team.teamNum === teamStat.teamNum)?.teamName || teamStat.teamNum}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )
             ) : (
                 <div className="m-auto text-center max-w-lg space-y-3.5">
                     <div className="space-y-0.5">
@@ -414,32 +568,74 @@ export default function Content({ defaultTeams }: {
                     </div>
                 </div>
             )}
-            <div className={"absolute bottom-3 right-3 space-x-2 transition-opacity " + (buttonsHidden ? "opacity-0 hover:opacity-100" : "opacity-50 hover:opacity-100")}>
-                <Dialog open={openHide} onOpenChange={() => buttonsHidden ? setButtonsHidden(false) : setOpenHide(true)}>
-                    <DialogTrigger asChild>
-                        <Button variant="outline" className="opacity-50 hover:opacity-100 transition-opacity" >
-                            {buttonsHidden ? <EyeClosed /> : <Eye />}
-                            {buttonsHidden ? "Show" : "Hide"}
-                        </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogTitle>
-                            Hide
-                        </DialogTitle>
-                        <DialogDescription>
-                            You can always bring button controls back by clicking the &quot;Show&quot; button in the bottom right corner. Are you sure you want to hide them?
-                        </DialogDescription>
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setOpenHide(false)}>Cancel</Button>
-                            <Button onClick={() => { setButtonsHidden(true); setOpenHide(false); }}>Hide</Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-
+            <div className={"absolute bottom-3 right-3 space-x-2 transition-opacity " + (settings.hideButtons ? "opacity-0 hover:opacity-100" : "opacity-50 hover:opacity-100")}>
                 <Button variant="outline" className="opacity-50 hover:opacity-100 transition-opacity" onClick={getTeamScores}>
                     <RefreshCcw />
                     Refresh
                 </Button>
+
+                <Dialog open={openSettings} onOpenChange={setOpenSettings}>
+                    <DialogTrigger asChild>
+                        <Button variant="outline" className="opacity-50 hover:opacity-100 transition-opacity">
+                            <Cog />
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogTitle>
+                            Settings
+                        </DialogTitle>
+                        <DialogDescription>
+                            Customize how you view team scores and statistics
+                        </DialogDescription>
+                        <div className="space-y-6">
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-medium">Display Mode</h3>
+                                <div className="flex gap-x-2">
+                                    <Button
+                                        variant={settings.display === "vertical" ? "default" : "outline"}
+                                        onClick={() => setSettings({ ...settings, display: "vertical" })}
+                                        className="flex-1"
+                                    >
+                                        <Grid3x3 className="mr-2 h-4 w-4" />
+                                        Vertical
+                                    </Button>
+                                    <Button
+                                        variant={settings.display === "horizontal" ? "default" : "outline"}
+                                        onClick={() => setSettings({ ...settings, display: "horizontal" })}
+                                        className="flex-1"
+                                    >
+                                        <StretchHorizontal className="mr-2 h-4 w-4" />
+                                        Horizontal
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <h3 className="text-sm font-medium">Display Options</h3>
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="showLegend"
+                                        checked={settings.showLegend}
+                                        onCheckedChange={(checked) => setSettings({ ...settings, showLegend: checked as boolean })}
+                                    />
+                                    <Label htmlFor="showLegend" className="cursor-pointer">
+                                        Show legend below chart
+                                    </Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="hideButtons"
+                                        checked={settings.hideButtons}
+                                        onCheckedChange={(checked) => setSettings({ ...settings, hideButtons: checked as boolean })}
+                                    />
+                                    <Label htmlFor="hideButtons" className="cursor-pointer">
+                                        Hide control buttons
+                                    </Label>
+                                </div>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
 
                 <Dialog open={openEdit} onOpenChange={setOpenEdit}>
                     <DialogTrigger asChild>
@@ -458,7 +654,7 @@ export default function Content({ defaultTeams }: {
                             <div className="space-y-4">
                                 {showBulkImport && (
                                     <div className="space-y-2">
-                                        <h3 className="text-sm font-medium">Bulk Import</h3>
+                                        <h3 className="text-sm font-medium">Bulk Import/Export</h3>
                                         <div className="flex gap-x-2">
                                             <Textarea
                                                 placeholder={`18-0001,Team Name\n18-0002,Another Team`}
@@ -466,14 +662,24 @@ export default function Content({ defaultTeams }: {
                                                 onChange={(e) => setBulkImportText(e.target.value)}
                                                 className="flex-1"
                                             />
-                                            <Button 
-                                                type="button" 
-                                                onClick={handleBulkImport} 
-                                                variant={"outline"}
-                                                disabled={!bulkImportText.trim()}
-                                            >
-                                                Import
-                                            </Button>
+                                            <div className="flex flex-col gap-y-2">
+                                                <Button 
+                                                    type="button" 
+                                                    onClick={handleBulkImport} 
+                                                    variant={"outline"}
+                                                    disabled={!bulkImportText.trim()}
+                                                >
+                                                    Import
+                                                </Button>
+                                                <Button 
+                                                    type="button" 
+                                                    onClick={handleBulkExport} 
+                                                    variant={"outline"}
+                                                    disabled={teamInputs.length === 0}
+                                                >
+                                                    Export
+                                                </Button>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -510,7 +716,7 @@ export default function Content({ defaultTeams }: {
                                         <Button 
                                             type="button" 
                                             onClick={() => setShowBulkImport(!showBulkImport)} 
-                                            variant={"outline"}
+                                            variant={showBulkImport ? "secondary" : "outline"}
                                             title="Toggle bulk import"
                                         >
                                             <FileText />

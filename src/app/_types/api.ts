@@ -1,5 +1,5 @@
 export interface ScoreResponse {
-    data: Team[]
+    data: TeamWithRankings[]
 }
 
 export interface Team {
@@ -13,4 +13,14 @@ export interface Team {
     division: string
     tier: string
     code: string
+}
+
+export interface TeamWithRankings extends Team {
+    national_rank: number
+    state_rank: number
+}
+
+export interface AllTeamsResponse {
+    data: TeamWithRankings[]
+    total_teams: number
 }
