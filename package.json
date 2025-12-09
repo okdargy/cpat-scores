@@ -31,7 +31,7 @@
     "next": "15.2.6",
     "react": "^19.2.1",
     "react-colorful": "^5.6.1",
-    "react-dom": "19.0.0-rc-69d4b800-20241021",
+    "react-dom": "^19.2.1",
     "react-query": "^3.39.3",
     "react-resizable-panels": "^2.1.9",
     "recharts": "2.13.3",
