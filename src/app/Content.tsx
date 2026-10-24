@@ -53,7 +53,7 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
                 <CardContent>
                     {payload.map((p: Payload<number, string>) => (
                         <CardDescription key={p.dataKey}>
-                            <span style={{ color: p.color }}>{p.dataKey}</span>: {p.value}
+                            <span style={{ color: p.color }}>{p.name || p.dataKey}</span>: {p.value}
                         </CardDescription>
                     ))}
                 </CardContent>
@@ -95,6 +95,7 @@ export default function Content({ defaultTeams }: {
     const [openEdit, setOpenEdit] = useState(false);
     const [showBulkImport, setShowBulkImport] = useState(false);
     const [teams, setTeams] = useState<{ teamNum: string, teamName: string, color: string }[]>(defaultTeams.map(team => ({ ...team, color: team.color || '#fff' })));
+    const [selectedTeamNums, setSelectedTeamNums] = useState<string[]>(() => defaultTeams.map(team => team.teamNum));
     const [teamInputs, setTeamInputs] = useState<{ id: number, teamNum: string, teamName: string, color: string }[]>(defaultTeams.map(team => ({ ...team, color: team.color || '#fff', id: Math.random() })));
     const [teamStats, setTeamStats] = useState<TeamStats[]>(teams.map(team => ({ teamNum: team.teamNum, teamName: team.teamName, score: 0, state: "Unknown", division: "Unknown", nationalRank: 0, stateRank: 0 })));
     const [historicalStats, setHistoricalStats] = useState<TeamHistoricalStats[]>([]);
@@ -179,6 +180,7 @@ export default function Content({ defaultTeams }: {
         
         setCookie("teams", btoa(JSON.stringify(teamsToSave)));
         setTeams(teamsToSave);
+        setSelectedTeamNums(teamsToSave.map((team) => team.teamNum));
         return true;
     };
 
@@ -244,7 +246,10 @@ export default function Content({ defaultTeams }: {
 
     const getTeamGraphs = trpc.getTeamGraphs.useMutation({
         onSuccess: (data) => {
-            if(Object.keys(data).length === 0) return
+            if (Object.keys(data).length === 0) {
+                setHistoricalStats([]);
+                return;
+            }
             const combinedData: { [key: string]: { date: string, [key: string]: number | string } } = {};
 
             Object.entries(data).forEach(([team, stats]) => {
@@ -282,7 +287,11 @@ export default function Content({ defaultTeams }: {
     }
 
     const getGraphScores = async () => {
-        return getTeamGraphs.mutate(teams.map((team) => team.teamNum));
+        if (selectedTeamNums.length === 0) {
+            setHistoricalStats([]);
+            return;
+        }
+        return getTeamGraphs.mutate(selectedTeamNums.filter((teamNum) => teams.some((team) => team.teamNum === teamNum)));
     }
 
     const intervalId = useRef<NodeJS.Timeout | null>(null);
@@ -306,7 +315,43 @@ export default function Content({ defaultTeams }: {
         return () => {
             if(intervalId.current) clearInterval(intervalId.current);
         };
-    }, [teams])
+    }, [teams, selectedTeamNums])
+
+    const graphSeries = Array.from(new Set(
+        historicalStats.flatMap((point) => Object.keys(point).filter((key) => key !== "date"))
+    )).map((dataKey, index) => {
+        const separator = " | ";
+        const isImageSeries = dataKey.includes(separator);
+        const teamNum = isImageSeries ? dataKey.split(separator)[0] : dataKey;
+        const team = teams.find((item) => item.teamNum === teamNum);
+        const fallbackColor = DEFAULT_COLORS[index % DEFAULT_COLORS.length];
+        return {
+            dataKey,
+            label: isImageSeries ? dataKey.slice(teamNum.length + separator.length) : (team?.teamName || teamNum),
+            color: isImageSeries ? fallbackColor : (team?.color || fallbackColor),
+        };
+    });
+
+    const renderTeamSelector = () => (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-neutral-800 pb-3 mb-3">
+            <span className="text-sm font-semibold text-neutral-300">Graph teams</span>
+            {teams.map((team) => (
+                <label key={team.teamNum} className="inline-flex items-center gap-2 text-sm text-neutral-300 cursor-pointer">
+                    <Checkbox
+                        checked={selectedTeamNums.includes(team.teamNum)}
+                        onCheckedChange={(checked) => setSelectedTeamNums((current) =>
+                            checked === true
+                                ? (current.includes(team.teamNum) ? current : [...current, team.teamNum])
+                                : current.filter((teamNum) => teamNum !== team.teamNum)
+                        )}
+                    />
+                    <span>{team.teamName || team.teamNum}</span>
+                </label>
+            ))}
+            <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedTeamNums(teams.map((team) => team.teamNum))}>All</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedTeamNums([])}>None</Button>
+        </div>
+    );
 
     return (
         <div className="w-full h-full flex">
@@ -374,6 +419,7 @@ export default function Content({ defaultTeams }: {
                         </ResizablePanel>
                         <ResizableHandle />
                         <ResizablePanel defaultSize={75} minSize={50} maxSize={75} className="p-5 my-auto">
+                            {renderTeamSelector()}
                             <div className="w-full h-full">
                                 {(historicalStats.length > 0) ? (
                                     <ResponsiveContainer width={'100%'} height={400}>
@@ -399,13 +445,14 @@ export default function Content({ defaultTeams }: {
                                                 )
                                             }
                                             <YAxis tickLine={false} axisLine={false} />
-                                            {teams.map((team) => (
+                                            {graphSeries.map((series) => (
                                                 <Line
-                                                    key={team.teamNum}
-                                                    dataKey={team.teamNum}
-                                                    fill={team.color}
+                                                    key={series.dataKey}
+                                                    dataKey={series.dataKey}
+                                                    name={series.label}
+                                                    fill={series.color}
                                                     type="monotone"
-                                                    stroke={team.color}
+                                                    stroke={series.color}
                                                     strokeWidth={2}
                                                     dot={false}
                                                 />
@@ -414,13 +461,13 @@ export default function Content({ defaultTeams }: {
                                     </ResponsiveContainer>
                                 ) : (
                                     <div className="flex flex-col gap-y-3.5 h-full justify-center items-center text-neutral-400">
-                                        <LoaderCircle className="animate-spin" />
+                                        {selectedTeamNums.length > 0 && <LoaderCircle className="animate-spin" />}
                                         <div className="m-auto text-center max-w-lg">
                                             <h1 className="text-neutral-500 font-semibold tracking-wide">
-                                                No data to display
+                                                {selectedTeamNums.length === 0 ? "No teams selected" : "No data to display"}
                                             </h1>
                                             <h2 className="text-neutral-400 text-sm">
-                                                Waiting for more than 1 team to start their round...
+                                                {selectedTeamNums.length === 0 ? "Select one or more teams above to graph their scores." : "Score history will appear when the selected teams have available image-score data."}
                                             </h2>
                                         </div>
                                     </div>
@@ -429,8 +476,9 @@ export default function Content({ defaultTeams }: {
                         </ResizablePanel>
                     </ResizablePanelGroup>
                 ) : (
-                    <div className="grid grid-rows-1 w-full gap-y-5 p-3">
-                        <div className="w-full h-full">
+                    <div className="flex flex-col w-full h-full gap-y-5 p-3">
+                        {renderTeamSelector()}
+                        <div className="w-full flex-1 min-h-0">
                             {(historicalStats.length > 0) ? (
                                 <ResponsiveContainer width={'100%'} height={'100%'} >
                                     <LineChart
@@ -455,13 +503,14 @@ export default function Content({ defaultTeams }: {
                                             )
                                         }
                                         <YAxis tickLine={false} axisLine={false} />
-                                        {teams.map((team) => (
+                                        {graphSeries.map((series) => (
                                             <Line
-                                                key={team.teamNum}
-                                                dataKey={team.teamNum}
-                                                fill={team.color}
+                                                key={series.dataKey}
+                                                dataKey={series.dataKey}
+                                                name={series.label}
+                                                fill={series.color}
                                                 type="monotone"
-                                                stroke={team.color}
+                                                stroke={series.color}
                                                 strokeWidth={2}
                                                 dot={false}
                                             />
@@ -470,13 +519,13 @@ export default function Content({ defaultTeams }: {
                                 </ResponsiveContainer>
                             ) : (
                                 <div className="flex flex-col gap-y-3.5 h-full justify-center items-center text-neutral-400">
-                                    <LoaderCircle className="animate-spin" />
+                                    {selectedTeamNums.length > 0 && <LoaderCircle className="animate-spin" />}
                                     <div className="text-center max-w-lg">
                                         <h1 className="text-neutral-500 font-semibold tracking-wide">
-                                            No data to display
+                                            {selectedTeamNums.length === 0 ? "No teams selected" : "No data to display"}
                                         </h1>
                                         <h2 className="text-neutral-400 text-sm">
-                                            Waiting for more than 1 team to start their round...
+                                            {selectedTeamNums.length === 0 ? "Select one or more teams above to graph their scores." : "Score history will appear when the selected teams have available image-score data."}
                                         </h2>
                                     </div>
                                 </div>
@@ -535,17 +584,12 @@ export default function Content({ defaultTeams }: {
                         </div>
                         {settings.showLegend && (
                             <div className="flex gap-x-5">
-                                {teamStats.map((teamStat) => {
-                                    return (
-                                        <div key={teamStat.teamNum + 'legend'} className="flex items-center gap-x-3">
-                                            <div
-                                                className="w-3 h-3 rounded-full flex-shrink-0"
-                                                style={{ backgroundColor: teams.find((team) => team.teamNum === teamStat.teamNum)?.color }}
-                                            />
-                                            <span className="text-sm text-neutral-300 truncate">{teams.find((team) => team.teamNum === teamStat.teamNum)?.teamName || teamStat.teamNum}</span>
-                                        </div>
-                                    );
-                                })}
+                                {graphSeries.map((series) => (
+                                    <div key={series.dataKey + "-legend"} className="flex items-center gap-x-3">
+                                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: series.color }} />
+                                        <span className="text-sm text-neutral-300 truncate">{series.label}</span>
+                                    </div>
+                                ))}
                             </div>
                         )}
                     </div>
@@ -569,7 +613,7 @@ export default function Content({ defaultTeams }: {
                 </div>
             )}
             <div className={"absolute bottom-3 right-3 space-x-2 transition-opacity " + (settings.hideButtons ? "opacity-0 hover:opacity-100" : "opacity-50 hover:opacity-100")}>
-                <Button variant="outline" className="opacity-50 hover:opacity-100 transition-opacity" onClick={getTeamScores}>
+                <Button variant="outline" className="opacity-50 hover:opacity-100 transition-opacity" onClick={() => { getTeamScores(); getGraphScores(); }}>
                     <RefreshCcw />
                     Refresh
                 </Button>
