@@ -118,7 +118,7 @@ type OrganizedData = { [key: string]: { time: string, value: number }[] };
 
 // Organize image-score history for Recharts. With several teams, image columns
 // are summed per team and timestamp. With one team, each image category gets
-// its own series so users can inspect the individual image scores.
+// its own series next to the team total, so users can inspect the individual image scores.
 function processData(data: Data, numTeams: number, teams: string[]): OrganizedData {
     const cols = data?.cols ?? [];
     const rows = data?.rows ?? [];
@@ -138,19 +138,15 @@ function processData(data: Data, numTeams: number, teams: string[]): OrganizedDa
     const seriesKeys = cols.slice(1).map((col) => {
         if (!singleTeam) return col.label.split('_')[0];
 
-        let category = col.label;
-        const teamNum = teams[0];
-        if (category.startsWith(teamNum)) {
-            category = category.slice(teamNum.length).replace(/^[_\-\s]+/, '');
-        }
-        category = category.replace(/_/g, ' ').trim();
-        return `${teamNum} | ${category || 'Image score'}`;
+        const category = col.label.replace(/_/g, ' ').trim();
+        return `${teams[0]} | ${category || 'Image score'}`;
     });
 
     const organizedData: OrganizedData = {};
     seriesKeys.forEach((key) => {
         if (!organizedData[key]) organizedData[key] = [];
     });
+    if (singleTeam) organizedData[teams[0]] = [];
 
     rows.forEach((row) => {
         const time = String(row.c?.[0]?.v ?? '');
@@ -170,10 +166,12 @@ function processData(data: Data, numTeams: number, teams: string[]): OrganizedDa
             if (!Number.isFinite(value)) return;
             lastValueByColumn[columnLabel] = value;
 
-            const series = organizedData[seriesKey];
-            const existingPoint = series.find((point) => point.time === time);
-            if (existingPoint) existingPoint.value += value;
-            else series.push({ time, value });
+            for (const key of singleTeam ? [seriesKey, teams[0]] : [seriesKey]) {
+                const series = organizedData[key];
+                const existingPoint = series.find((point) => point.time === time);
+                if (existingPoint) existingPoint.value += value;
+                else series.push({ time, value });
+            }
         });
     });
 

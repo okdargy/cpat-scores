@@ -244,8 +244,11 @@ export default function Content({ defaultTeams }: {
         }
     })
 
+    const lastGraphReq = useRef("");
+
     const getTeamGraphs = trpc.getTeamGraphs.useMutation({
-        onSuccess: (data) => {
+        onSuccess: (data, sentTeams) => {
+            if (sentTeams.join() !== lastGraphReq.current) return;
             if (Object.keys(data).length === 0) {
                 setHistoricalStats([]);
                 return;
@@ -287,22 +290,25 @@ export default function Content({ defaultTeams }: {
     }
 
     const getGraphScores = async () => {
+        lastGraphReq.current = selectedTeamNums.join();
         if (selectedTeamNums.length === 0) {
             setHistoricalStats([]);
             return;
         }
-        return getTeamGraphs.mutate(selectedTeamNums.filter((teamNum) => teams.some((team) => team.teamNum === teamNum)));
+        return getTeamGraphs.mutate(selectedTeamNums);
     }
 
     const intervalId = useRef<NodeJS.Timeout | null>(null);
+    const scoresFetchedFor = useRef<typeof teams | null>(null);
 
     useEffect(() => {
         if(teams.length > 0) {
-            getTeamScores();
+            if (scoresFetchedFor.current !== teams) getTeamScores();
             getGraphScores();
 
             console.log('loaded with', teams.length, 'teams and', historicalStats.length, 'data points as well as', teamStats.length, 'team stats at', new Date().toLocaleTimeString());
         }
+        scoresFetchedFor.current = teams;
 
         if (intervalId.current) clearInterval(intervalId.current);
         intervalId.current = setInterval(() => {
